@@ -1,7 +1,5 @@
 # Overview
 
-[![Build Status](https://travis-ci.org/kubernetes/oapi-exporter.svg?branch=master)](https://travis-ci.org/kubernetes/oapi-exporter)  [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes/oapi-exporter)](https://goreportcard.com/report/github.com/kubernetes/oapi-exporter)
-
 oapi-exporter is a simple service that listens to the OpenShift API
 server and generates metrics about the state of the OpenShift objects. (See examples in
 the Metrics section below.) 
