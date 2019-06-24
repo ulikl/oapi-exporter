@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: project-prometheus-infra
+  labels:
+    app: monitoring
+    vendor: ConSol
+  annotations:
+    description: >-
+      Template for create the prometheus infrastructure monitoring
+
+    tags: "monitoring,prometheus,time-series"
+    openshift.io/display-name: "Openshift Infra Monitoring"
+    openshift.io/provider-display-name: "ConSol Consulting & Solutions Software GmbH"
+    template.openshift.io/bindable: "false"
+
+parameters:
+  - name: OAPIEXPORTER_IMAGE
+    description: "OAPI exporter image to use"
+    required: true
+    value: ulikl/oapi-exporter:latest
+objects:
+  # Service: oapiexp ---------------------------
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: svc-oapiexp
+      annotations:
+        service.alpha.openshift.io/serving-cert-secret-name: oapiexp-tls
+      labels:
+        app: monitoring
+        vendor: ConSol
+    spec:
+      ports:
+        - name: metrics
+          port: 8080
+      selector:
+        app: monitoring
+        deploymentconfig: dc-oapiexp
+
+  - apiVersion: v1
+    kind: Route
+    metadata:
+      name: rt-oapiexp
+      
+      labels:
+        app: monitoring
+        vendor: ConSol
+    spec:
+      port:
+        targetPort: metrics-oauth
+        
+      tls:
+        termination: egde
+      to:
+        kind: Service
+        name: svc-oapiexp
+        
+
+  # Deployment Config: Kube-state-metrics ---------------------------
+  - apiVersion: v1
+    kind: DeploymentConfig
+    metadata:
+      name: dc-oapiexp
+      
+      labels:
+        app: monitoring
+        vendor: ConSol
+    spec:
+      replicas: 1
+      selector:
+        app: monitoring
+        deploymentconfig: dc-oapiexp
+      strategy:
+        type: Rolling
+        activeDeadlineSeconds: 21600
+        resources:
+          limits:
+            cpu: 200m
+            memory: 400Mi
+          requests:
+            cpu: 10m
+            memory: 20Mi
+      template:
+        metadata:
+          labels:
+            app: monitoring
+            vendor: ConSol
+            deploymentconfig: dc-oapiexp
+        spec:
+          serviceAccountName: sa-prom-infra-mon
+          restartPolicy: Always
+
+          containers:
+            - name: kube-state-metrics
+              image: ${OAPIEXPORTER_IMAGE}
+              imagePullPolicy: IfNotPresent
+              command: [/bin/oapi-exporter]
+              args:
+              - --port=8080 
+              - --host=localhost
+              - --telemetry-port=8081
+              ports:
+              - containerPort: 8080
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 120Mi
+                requests:
+                # ok for ca. 180 pods of 45 namespaces
+                  cpu: 50m
+                  memory: 60Mi
+              readinessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                  scheme: HTTPS
+                initialDelaySeconds: 5
+                timeoutSeconds: 5
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                timeoutSeconds: 10
+      triggers:
+        - type: ConfigChange
