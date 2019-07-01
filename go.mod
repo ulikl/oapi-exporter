@@ -3,6 +3,7 @@ module github.com/ulikl/oapi-exporter
 require (
 	github.com/Azure/go-autorest/autorest v0.2.0 // indirect
 	github.com/apache/thrift v0.12.0 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gophercloud/gophercloud v0.2.0 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect

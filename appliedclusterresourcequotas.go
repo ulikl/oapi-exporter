@@ -141,6 +141,10 @@ import (
 	quotav1clientset "github.com/openshift/client-go/quota/clientset/versioned"
 
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	 
+	
+	/* for Dump of structs */
+	"github.com/davecgh/go-spew/spew"
 )
 
 var (
@@ -148,6 +152,11 @@ var (
 		"oapi_appliedclusterresourcequota_created",
 		"Unix creation timestamp of clusterresourcequota",
 		[]string{"clusterresourcequota", "namespace"}, nil,
+	)
+	descAppliedClusterResourceQuotaSelector = prometheus.NewDesc(
+		"oapi_appliedclusterresourcequota_selector",
+		"Selector of clusterresourcequota to determine the effected namespaces",
+		[]string{"clusterresourcequota","type","key","value"}, nil,
 	)
 	descAppliedClusterResourceQuota = prometheus.NewDesc(
 		"oapi_appliedclusterresourcequota",
@@ -227,6 +236,7 @@ type resourceQuotaCollector struct {
 // Describe implements the prometheus.Collector interface.
 func (rqc *resourceQuotaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- descAppliedClusterResourceQuotaCreated
+	ch <- descAppliedClusterResourceQuotaSelector
 	ch <- descAppliedClusterResourceQuota
 }
 
@@ -284,6 +294,7 @@ func (rqc *resourceQuotaCollector) collectAppliedClusterResourceQuota(ch chan<- 
 	if (rqc.namespace == rq.Namespace || rqc.namespace == v1meta.NamespaceAll) {
 	 // only include metrics from selected namespaces:
 
+
 	 _, ok := rqc.m[strings.Join([]string{rql.Name, rq.Namespace},"/")]
 	 if !(ok)  {	
 		
@@ -322,6 +333,23 @@ func (rqc *resourceQuotaCollector) collectAppliedClusterResourceQuota(ch chan<- 
 		for res, qty := range rqTotal.Used {
 			addGauge(descAppliedClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "used")
 		}
+
+		sel := rql.Spec.Selector
+		if (false) {spew.Dump(sel)}
+		for key, value := range sel.AnnotationSelector {
+			 lv := append([]string{rql.Name, "annotation", key, value})
+			ch <- prometheus.MustNewConstMetric(descAppliedClusterResourceQuotaSelector, prometheus.GaugeValue, 1, lv...)
+		}
+ 
+		if (sel.LabelSelector != nil) {
+			labelMap := (make(map[string]string))
+			v1meta.Convert_v1_LabelSelector_To_Map_string_To_string(sel.LabelSelector,&labelMap,nil)
+			for key, value := range labelMap {
+			 lv := append([]string{rql.Name, "label", key, value})
+			 ch <- prometheus.MustNewConstMetric(descAppliedClusterResourceQuotaSelector, prometheus.GaugeValue, 1, lv...)
+			}
+		}
+ 
 	}
 
 
