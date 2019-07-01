@@ -169,14 +169,24 @@ func (dc *deploymentConfigCollector) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements the prometheus.Collector interface.
 func (dc *deploymentConfigCollector) Collect(ch chan<- prometheus.Metric) {
+
+    /* collect metrics for execution times */
+	start := time.Now()
+
 	ds, err := dc.store.List()
 	if err != nil {
 		glog.Errorf("listing deployments failed: %s", err)
 		return
 	}
+
 	for _, d := range ds {
 		dc.collectDeploymentConfig(ch, d)
 	}
+
+	duration := time.Since(start)
+	ScrapeDurationHistogram.WithLabelValues("deploymentconfig").Observe(duration.Seconds())
+
+	ResourcesPerScrapeMetric.With(prometheus.Labels{"resource": "deploymentconfig"}).Observe(float64(len(ds)))
 
 	glog.Infof("collected %d deployments", len(ds))
 }

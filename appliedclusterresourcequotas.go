@@ -26,6 +26,11 @@ oc create clusterquota crq-test \
 	 --hard "limits.memory"=2Gi\
 	 --hard cpu=1G
 
+oc create clusterquota crq-storage-label \
+     --project-label-selector quotalabel=test \
+     --hard "requests.storage"=10G 
+
+
 oc create quota rq-test \
      --hard pods=10 \
 	 --hard secrets=20\
@@ -132,6 +137,7 @@ metadata:
 package main
 
 import (
+	"time"
 	"strings"
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
@@ -224,7 +230,6 @@ func RegisterAppliedClusterResourceQuotaCollectorOApi(registry prometheus.Regist
 }
 
 
-
 type resourceQuotaCollector struct {
 	namespace string
 	quotaclientset quotav1clientset.Interface
@@ -251,38 +256,60 @@ func (rqc *resourceQuotaCollector) Collect(ch chan<- prometheus.Metric) {
 
 
 	if rqc.namespace == v1meta.NamespaceAll {
-	 namespaceList, err := kubeClient.CoreV1().Namespaces().List(v1meta.ListOptions{})
-	 if err != nil {
-		glog.Fatalf("Failed to list namespaces: %v", err)
-	 }
 
-	 var ns_count int 
-	 ns_count = 0
-	 for _, ns := range namespaceList.Items {
-		resourceQuota, err := quotaClient.QuotaV1().AppliedClusterResourceQuotas(ns.Name).List(v1meta.ListOptions{})
+	 	/* collect metrics for execution times */
+	 	start := time.Now()
+
+	 	namespaceList, err := kubeClient.CoreV1().Namespaces().List(v1meta.ListOptions{})
+	 	if err != nil {
+			glog.Fatalf("Failed to list namespaces: %v", err)
+	 	}
+
+	 	duration := time.Since(start)
+	 	ScrapeDurationHistogram.WithLabelValues("appliedclusterresourcequotas ns list").Observe(duration.Seconds())
+	 	ResourcesPerScrapeMetric.With(prometheus.Labels{"resource": "appliedclusterresourcequotas ns list"}).Observe(float64(len(namespaceList.Items)))
+
+	 	start = time.Now()
+	 	var ns_count int 
+	 	ns_count = 0
+	 	for _, ns := range namespaceList.Items {
+			resourceQuota, err := quotaClient.QuotaV1().AppliedClusterResourceQuotas(ns.Name).List(v1meta.ListOptions{})
+			if err != nil {
+				glog.Fatalf("Failed to read quotas: %v", err)
+			}
+		
+			for _, rq := range resourceQuota.Items {
+				rqc.collectAppliedClusterResourceQuota(ch, rq)
+			}
+			ns_count = ns_count + len(resourceQuota.Items)
+	 	}
+
+	 	duration = time.Since(start)
+	 	ScrapeDurationHistogram.WithLabelValues("appliedclusterresourcequotas").Observe(duration.Seconds())
+	 	ResourcesPerScrapeMetric.With(prometheus.Labels{"resource": "appliedclusterresourcequotas"}).Observe(float64(ns_count))
+	 
+	 
+	 	glog.Infof("collected %d appliedclusterresourcequotas for %s", ns_count , "all namespaces")
+	} else {
+
+	  /* collect metrics for execution times */
+	  start := time.Now()
+
+	  resourceQuota, err := quotaClient.QuotaV1().AppliedClusterResourceQuotas(rqc.namespace).List(v1meta.ListOptions{})
 		if err != nil {
 			glog.Fatalf("Failed to read quotas: %v", err)
 		}
-	
+
 		for _, rq := range resourceQuota.Items {
 			rqc.collectAppliedClusterResourceQuota(ch, rq)
 		}
-		ns_count = ns_count + len(resourceQuota.Items)
-	 }
-	 glog.Infof("collected %d appliedclusterresourcequotas for %s", ns_count , "all namespaces")
-	 } else {
 
-	resourceQuota, err := quotaClient.QuotaV1().AppliedClusterResourceQuotas(rqc.namespace).List(v1meta.ListOptions{})
-	if err != nil {
-		glog.Fatalf("Failed to read quotas: %v", err)
-	}
+		duration := time.Since(start)
+		ScrapeDurationHistogram.WithLabelValues("appliedclusterresourcequotas").Observe(duration.Seconds())
+		ResourcesPerScrapeMetric.With(prometheus.Labels{"resource": "appliedclusterresourcequotas"}).Observe(float64(len(resourceQuota.Items)))
+		glog.Infof("collected %d appliedclusterresourcequotas for %s", len(resourceQuota.Items), rqc.namespace)
 
-
-	for _, rq := range resourceQuota.Items {
-		rqc.collectAppliedClusterResourceQuota(ch, rq)
-	}
-	glog.Infof("collected %d appliedclusterresourcequotas for %s", len(resourceQuota.Items), rqc.namespace)
-  }
+  	}
 }
 
 func (rqc *resourceQuotaCollector) collectAppliedClusterResourceQuota(ch chan<- prometheus.Metric, rql quotav1meta.AppliedClusterResourceQuota) {
@@ -303,7 +330,7 @@ func (rqc *resourceQuotaCollector) collectAppliedClusterResourceQuota(ch chan<- 
 			lv = append([]string{rql.Name, rq.Namespace}, lv...)
 			ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
 		}
-		 if !rql.CreationTimestamp.IsZero() {
+		if !rql.CreationTimestamp.IsZero() {
 			addGauge(descAppliedClusterResourceQuotaCreated, float64(rql.CreationTimestamp.Unix()))
 		}
 		for res, qty := range rq.Status.Hard {

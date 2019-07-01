@@ -46,6 +46,11 @@ var (
 			"Unix creation timestamp of clusterresourcequota",
 			[]string{"clusterresourcequota", "namespace"}, nil,
 		)
+		descClusterResourceQuotaSelector = prometheus.NewDesc(
+			"oapi_clusterresourcequota_selector",
+			"Selector of clusterresourcequota to determine the effected namespaces",
+			[]string{"clusterresourcequota","type","key","value"}, nil,
+		)
 		descClusterResourceQuota = prometheus.NewDesc(
 			"oapi_clusterresourcequota",
 			"Information about resource requests and limits of clusterresourcequota.",
@@ -137,11 +142,15 @@ type clusterResourceQuotaCollector struct {
 // Describe implements the prometheus.Collector interface.
 func (rqc *clusterResourceQuotaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- descClusterResourceQuotaCreated
+	ch <- descClusterResourceQuotaSelector
 	ch <- descClusterResourceQuota
 }
 
 // Collect implements the prometheus.Collector interface.
 func (rqc *clusterResourceQuotaCollector) Collect(ch chan<- prometheus.Metric) {
+
+    /* collect metrics for execution times */
+	start := time.Now()
 
 	rqc.m = make(map[string]int)
 
@@ -154,7 +163,11 @@ func (rqc *clusterResourceQuotaCollector) Collect(ch chan<- prometheus.Metric) {
 		rqc.collectClusterResourceQuota(ch, d)
 	}
 
-	glog.Infof("collected %d deployments", len(rq))
+	duration := time.Since(start)
+	ScrapeDurationHistogram.WithLabelValues("clusterresourcequotas").Observe(duration.Seconds())
+	ResourcesPerScrapeMetric.With(prometheus.Labels{"resource": "clusterresourcequotas"}).Observe(float64(len(rq)))
+
+	glog.Infof("collected %d clusterresourcequotas", len(rq))
 }
 
 
@@ -163,35 +176,71 @@ func (rqc *clusterResourceQuotaCollector) collectClusterResourceQuota(ch chan<- 
 
 		//glog.Infof("m before %s", rqc.m)
 		nsfound := (rqc.namespace == v1meta.NamespaceAll)
+
+		sel := rql.Spec.Selector
+		for key, value := range sel.AnnotationSelector {
+			 lv := append([]string{rql.Name, "annotation", key, value})
+			ch <- prometheus.MustNewConstMetric(descClusterResourceQuotaSelector, prometheus.GaugeValue, 1, lv...)
+		}
+ 
+		if (sel.LabelSelector != nil) {
+			labelMap := (make(map[string]string))
+			v1meta.Convert_v1_LabelSelector_To_Map_string_To_string(sel.LabelSelector,&labelMap,nil)
+			for key, value := range labelMap {
+			 lv := append([]string{rql.Name, "label", key, value})
+			 ch <- prometheus.MustNewConstMetric(descClusterResourceQuotaSelector, prometheus.GaugeValue, 1, lv...)
+			}
+		}
 		
 		for _, rq := range rql.Status.Namespaces { 
-		if (rqc.namespace == rq.Namespace || rqc.namespace == v1meta.NamespaceAll)  {
-		 nsfound = true
-		 _, ok := rqc.m[strings.Join([]string{rql.Name, rq.Namespace},"/")]
-		 if !(ok)  {	
-			
-			rqc.m[strings.Join([]string{rql.Name, rq.Namespace},"/")] = 1
-			addGauge := func(desc *prometheus.Desc, v float64, lv ...string) {
-				lv = append([]string{rql.Name, rq.Namespace}, lv...)
-				ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
+			if (rqc.namespace == rq.Namespace || rqc.namespace == v1meta.NamespaceAll)  {
+			 	nsfound = true
+			 	_, ok := rqc.m[strings.Join([]string{rql.Name, rq.Namespace},"/")]
+			 	if !(ok)  {	
+
+					rqc.m[strings.Join([]string{rql.Name, rq.Namespace},"/")] = 1
+					addGauge := func(desc *prometheus.Desc, v float64, lv ...string) {
+						lv = append([]string{rql.Name, rq.Namespace}, lv...)
+						ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
+					}
+					 if !rql.CreationTimestamp.IsZero() {
+						addGauge(descClusterResourceQuotaCreated, float64(rql.CreationTimestamp.Unix()))
+					}
+					for res, qty := range rq.Status.Hard {
+						addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "hard")
+					}
+					for res, qty := range rq.Status.Used {
+						addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "used")
+					}
+			 	}
 			}
-			 if !rql.CreationTimestamp.IsZero() {
-				addGauge(descClusterResourceQuotaCreated, float64(rql.CreationTimestamp.Unix()))
-			}
-			for res, qty := range rq.Status.Hard {
-				addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "hard")
-			}
-			for res, qty := range rq.Status.Used {
-				addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "used")
-			}
-		 }
-		}
 	    } 
 		_, ok := rqc.m[strings.Join([]string{rql.Name, ""},"/")]
 		if (!ok && nsfound)  {	
-			rqc.m[strings.Join([]string{rql.Name, ""},"/")] = 1
 	
 			rqTotal := rql.Status.Total
+			if ( len(rqTotal.Hard) > 0)  {
+				rqc.m[strings.Join([]string{rql.Name, ""},"/")] = 1
+				addGauge := func(desc *prometheus.Desc, v float64, lv ...string) {
+					lv = append([]string{rql.Name, ""}, lv...)
+					ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
+				}
+				 if !rql.CreationTimestamp.IsZero() {
+					addGauge(descClusterResourceQuotaCreated, float64(rql.CreationTimestamp.Unix()))
+				}
+				for res, qty := range rqTotal.Hard {
+					addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "hard")
+				}
+				for res, qty := range rqTotal.Used {
+					addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "used")
+				}
+			}	
+		}
+
+		_, ok = rqc.m[strings.Join([]string{rql.Name, ""},"/")]
+		if (!ok) {
+			rqc.m[strings.Join([]string{rql.Name, ""},"/")] = 1
+			rqSpecQuota := rql.Spec.Quota
 			addGauge := func(desc *prometheus.Desc, v float64, lv ...string) {
 				lv = append([]string{rql.Name, ""}, lv...)
 				ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, v, lv...)
@@ -199,14 +248,12 @@ func (rqc *clusterResourceQuotaCollector) collectClusterResourceQuota(ch chan<- 
 			 if !rql.CreationTimestamp.IsZero() {
 				addGauge(descClusterResourceQuotaCreated, float64(rql.CreationTimestamp.Unix()))
 			}
-			for res, qty := range rqTotal.Hard {
+			for res, qty := range rqSpecQuota.Hard {
 				addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "hard")
 			}
-			for res, qty := range rqTotal.Used {
-				addGauge(descClusterResourceQuota, float64(qty.MilliValue())/1000, string(res), "used")
-			}
 		}
-		
+	
+
 	}
 	
 

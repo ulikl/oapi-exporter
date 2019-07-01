@@ -89,6 +89,16 @@ var (
 		},
 		[]string{"resource"},
 	)	
+
+	ScrapeDurationHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "ksm_durations_per_scrape",
+			Help:    "During distribution of per metric collector",
+			Buckets: []float64{1, 2, 5, 10, 20, 60},
+		},
+		[]string{"resource"},
+	)
+
 )
 
 type collectorSet map[string]struct{}
@@ -190,6 +200,7 @@ func main() {
 	ksmMetricsRegistry := prometheus.NewRegistry()
 	ksmMetricsRegistry.Register(ResourcesPerScrapeMetric)
 	ksmMetricsRegistry.Register(ScrapeErrorTotalMetric)
+	ksmMetricsRegistry.Register(ScrapeDurationHistogram)
 	ksmMetricsRegistry.Register(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	ksmMetricsRegistry.Register(prometheus.NewGoCollector())
 	go telemetryServer(ksmMetricsRegistry, opts.TelemetryHost, opts.TelemetryPort)
