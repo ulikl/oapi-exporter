@@ -35,6 +35,10 @@ import (
 	/*v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"*/
     /* "k8s.io/apimachinery/pkg/runtime"*/
 
+	"k8s.io/apimachinery/pkg/util/intstr"
+
+	/* for Dump of structs */
+	"github.com/davecgh/go-spew/spew"
 
 
 )
@@ -42,63 +46,69 @@ import (
 var (
 	descDeploymentConfigLabelsName          = "oapi_deploymentconfig_labels"
 	descDeploymentConfigLabelsHelp          = "DeploymentConfig labels converted to Prometheus labels."
-	descDeploymentConfigLabelsDefaultLabels = []string{"namespace", "deployment"}
+	descDeploymentConfigLabelsDefaultLabels = []string{"namespace", "deploymentconfig"}
 
 	descDeploymentConfigCreated = prometheus.NewDesc(
 		"oapi_deploymentconfig_created",
 		"Unix creation timestamp of DeploymentConfig",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigStatusReplicas = prometheus.NewDesc(
 		"oapi_deploymentconfig_status_replicas",
 		"The number of replicas per DeploymentConfig.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 	descDeploymentConfigStatusReplicasAvailable = prometheus.NewDesc(
 		"oapi_deploymentconfig_status_replicas_available",
 		"The number of available replicas per DeploymentConfig.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 	descDeploymentConfigStatusReplicasUnavailable = prometheus.NewDesc(
 		"oapi_deploymentconfig_status_replicas_unavailable",
 		"The number of unavailable replicas per DeploymentConfig.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 	descDeploymentConfigStatusReplicasUpdated = prometheus.NewDesc(
 		"oapi_deploymentconfig_status_replicas_updated",
 		"The number of updated replicas per DeploymentConfig.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigStatusObservedGeneration = prometheus.NewDesc(
 		"oapi_deploymentconfig_status_observed_generation",
-		"The generation observed by the deployment controller???.",
-		[]string{"namespace", "deployment"}, nil,
+		"The generation observed by the deployment replication controller.",
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigSpecReplicas = prometheus.NewDesc(
 		"oapi_deploymentconfig_spec_replicas",
 		"Number of desired pods for a DeploymentConfig.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigSpecPaused = prometheus.NewDesc(
 		"oapi_deploymentconfig_spec_paused",
-		"Whether the deployment is paused and will not be processed by the deployment controller.",
-		[]string{"namespace", "deployment"}, nil,
+		"Whether the deployment config is paused and will not be processed by the replication controller.",
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigStrategyRollingUpdateMaxUnavailable = prometheus.NewDesc(
 		"oapi_deploymentconfig_spec_strategy_rollingupdate_max_unavailable",
-		"Maximum number of unavailable replicas during a rolling update of a deployment.",
-		[]string{"namespace", "deployment"}, nil,
+		"Maximum number of unavailable replicas during a rolling update of a deployment config.",
+		[]string{"namespace", "deploymentconfig"}, nil,
+	)
+
+	descDeploymentStrategyRollingUpdateMaxSurge = prometheus.NewDesc(
+		"oapi_deploymentconfig_spec_strategy_rollingupdate_max_surge",
+		"Maximum number of replicas that can be scheduled above the desired number of replicas during a rolling update of a deployment config.",
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigMetadataGeneration = prometheus.NewDesc(
 		"oapi_deploymentconfig_metadata_generation",
 		"Sequence number representing a specific generation of the desired state.",
-		[]string{"namespace", "deployment"}, nil,
+		[]string{"namespace", "deploymentconfig"}, nil,
 	)
 
 	descDeploymentConfigLabels = prometheus.NewDesc(
@@ -162,6 +172,7 @@ func (dc *deploymentConfigCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- descDeploymentConfigStatusObservedGeneration
 	ch <- descDeploymentConfigSpecPaused
 	ch <- descDeploymentConfigStrategyRollingUpdateMaxUnavailable
+	ch <- descDeploymentStrategyRollingUpdateMaxSurge
 	ch <- descDeploymentConfigSpecReplicas
 	ch <- descDeploymentConfigMetadataGeneration
 	ch <- descDeploymentConfigLabels
@@ -212,27 +223,40 @@ func (dc *deploymentConfigCollector) collectDeploymentConfig(ch chan<- prometheu
 	if !d.CreationTimestamp.IsZero() {
 		addGauge(descDeploymentConfigCreated, float64(d.CreationTimestamp.Unix()))
 	}
-	/* TODO: addGauge(descDeploymentConfigStatusReplicas, float64(d.Status.Replicas))*/
+	addGauge(descDeploymentConfigStatusReplicas, float64(d.Status.Replicas))
 	addGauge(descDeploymentConfigStatusReplicasAvailable, float64(d.Status.AvailableReplicas))
 	addGauge(descDeploymentConfigStatusReplicasUnavailable, float64(d.Status.UnavailableReplicas))
 	addGauge(descDeploymentConfigStatusReplicasUpdated, float64(d.Status.UpdatedReplicas))
 	addGauge(descDeploymentConfigStatusObservedGeneration, float64(d.Status.ObservedGeneration))
 	addGauge(descDeploymentConfigSpecPaused, boolFloat64(d.Spec.Paused))
-	/*addGauge(descDeploymentConfigSpecReplicas, float64(*d.Spec.Replicas))*/
+	addGauge(descDeploymentConfigSpecReplicas, float64(d.Spec.Replicas))
 	addGauge(descDeploymentConfigMetadataGeneration, float64(d.ObjectMeta.Generation))
 
-	/* TODO:
-	if d.Spec.Strategy.RollingUpdate == nil {
-		return
+	   
+
+	if (false) {
+		spew.Dump(d.Spec.Strategy)
 	}
 
-	maxUnavailable, err := intstr.GetValueFromIntOrPercent(d.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*d.Spec.Replicas), true)
-	if err != nil {
-		glog.Errorf("Error converting RollingUpdate MaxUnavailable to int: %s", err)
-	} else {
-		addGauge(descDeploymentConfigStrategyRollingUpdateMaxUnavailable, float64(maxUnavailable))
+	
+	if (d.Spec.Strategy.RollingParams != nil) {
+		dcStratParams := d.Spec.Strategy.RollingParams
+
+		maxUnavailable, err := intstr.GetValueFromIntOrPercent(dcStratParams.MaxUnavailable, int(d.Spec.Replicas), true)
+		if err != nil {
+			glog.Errorf("Error converting RollingUpdate MaxSurge to int: %s", err)
+		} else {
+			addGauge(descDeploymentConfigStrategyRollingUpdateMaxUnavailable, float64(maxUnavailable))
+ 	    }
+
+		maxSurge, err := intstr.GetValueFromIntOrPercent(dcStratParams.MaxSurge, int(d.Spec.Replicas), true)
+		if err != nil {
+			glog.Errorf("Error converting RollingUpdate MaxSurge to int: %s", err)
+		} else {
+			addGauge(descDeploymentStrategyRollingUpdateMaxSurge, float64(maxSurge))
+	   }
 	}
-	*/
+
 }
 
 

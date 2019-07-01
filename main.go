@@ -76,7 +76,7 @@ var (
 
 	ScrapeErrorTotalMetric = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "ksm_scrape_error_total",
+			Name: "oapi_scrape_error_total",
 			Help: "Total scrape errors encountered when scraping a resource",
 		},
 		[]string{"resource"},
@@ -84,7 +84,7 @@ var (
 
 	ResourcesPerScrapeMetric = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Name: "ksm_resources_per_scrape",
+			Name: "oapi_resources_per_scrape",
 			Help: "Number of resources returned per scrape",
 		},
 		[]string{"resource"},
@@ -92,7 +92,7 @@ var (
 
 	ScrapeDurationHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "ksm_durations_per_scrape",
+			Name:    "oapi_durations_per_scrape",
 			Help:    "During distribution of per metric collector",
 			Buckets: []float64{1, 2, 5, 10, 20, 60},
 		},
@@ -197,13 +197,13 @@ func main() {
 	}
 
 	/* TODO: update Scrape metrics! */
-	ksmMetricsRegistry := prometheus.NewRegistry()
-	ksmMetricsRegistry.Register(ResourcesPerScrapeMetric)
-	ksmMetricsRegistry.Register(ScrapeErrorTotalMetric)
-	ksmMetricsRegistry.Register(ScrapeDurationHistogram)
-	ksmMetricsRegistry.Register(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	ksmMetricsRegistry.Register(prometheus.NewGoCollector())
-	go telemetryServer(ksmMetricsRegistry, opts.TelemetryHost, opts.TelemetryPort)
+	telemetryMetricsRegistry := prometheus.NewRegistry()
+	telemetryMetricsRegistry.Register(ResourcesPerScrapeMetric)
+	telemetryMetricsRegistry.Register(ScrapeErrorTotalMetric)
+	telemetryMetricsRegistry.Register(ScrapeDurationHistogram)
+	telemetryMetricsRegistry.Register(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	telemetryMetricsRegistry.Register(prometheus.NewGoCollector())
+	go telemetryServer(telemetryMetricsRegistry, opts.TelemetryHost, opts.TelemetryPort)
 
 
 	registry := prometheus.NewRegistry()
