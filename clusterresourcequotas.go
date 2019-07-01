@@ -88,7 +88,7 @@ func RegisterClusterResourceQuotaCollectorOApi(registry prometheus.Registerer, k
    			ResourceAttributes: &authorizationv1.ResourceAttributes{
    					Verb:     "get",
    					//Group: "quota.openshift.io",
-   					Resource: "clusterresroucequotas",
+   					Resource: "clusterresourcequotas",
    			},
    	},
    }
