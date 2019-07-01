@@ -34,6 +34,10 @@ import (
 	clusterresourcequotav1meta "github.com/openshift/client-go/quota/clientset/versioned"
     /* from NamespaceAll: */
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+
+	authorizationv1 "k8s.io/api/authorization/v1"
+    authorizationclient "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
 var (
@@ -44,7 +48,7 @@ var (
 		)
 		descClusterResourceQuota = prometheus.NewDesc(
 			"oapi_clusterresourcequota",
-			"Information about resource requests and limits of appliedclusterresourcequota.",
+			"Information about resource requests and limits of clusterresourcequota.",
 			[]string{
 				"clusterresourcequota",
 				"namespace",
@@ -61,34 +65,61 @@ func (l ClusterResourceQuotaLister) List() ([]quotav1meta.ClusterResourceQuota, 
 	return l()
 }
 
+/*  RegisterClusterResourceQuotaCollectorOApi: register collector for ClusterResourceQuotas
+  NOTE: clusterresourcequata does not support watch and select by all namespaces
+*/
 func RegisterClusterResourceQuotaCollectorOApi(registry prometheus.Registerer, kubeConfig *rest.Config, namespace string) {
-	/* NOTE: appliedclusterresourcequata does not support watch and select by all namespaces*/
 
- /* Note: OAPI only provides very specifiy clientsets */
-   clusterresourcequotaClient, err := clusterresourcequotav1meta.NewForConfig(kubeConfig)
-   if err != nil {
-	   glog.Fatalf("Failed to access clusterresourcequotas api: %v", err)
+
+	authKubeClient, err := authorizationclient.NewForConfig(kubeConfig)
+	if err != nil {
+		glog.Fatalf("Failed to access quotas api: %v", err)
+	}
+
+   /* Check if current kubernetes user, can access clusterresource quotas
+     from https://itnext.io/testing-kubernetes-go-applications-f1f87502b6ef */
+   ssar := &authorizationv1.SelfSubjectAccessReview{
+   	Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+   			ResourceAttributes: &authorizationv1.ResourceAttributes{
+   					Verb:     "get",
+   					//Group: "quota.openshift.io",
+   					Resource: "clusterresroucequotas",
+   			},
+   	},
    }
+   // AuthorizationV1().
+   rssar, err := authKubeClient.SelfSubjectAccessReviews().Create(ssar)
+   if err != nil {
+	   glog.Fatalf("Cannot access ssar for clusterresourcequotas: %v", err)
+	   return
+   }
+	
+    if (rssar.Status.Allowed == false) {
+	  glog.Infof("%v", rssar.Status.Reason)
+	  glog.Infof("Needs cluster-reader ClusterRole or cluster RBAC get clusterresourcequota. Alternatively use applicedclusterresourcequotas instead")
 
-   resyncPeriod, _ := time.ParseDuration("0h0m30s")
-
-   client := clusterresourcequotaClient.QuotaV1().RESTClient()
-
-	// note: namespace not supported here, filter at collection
-	rqlw := cache.NewListWatchFromClient(client, "clusterresourcequotas", "", fields.Everything())
-	rqinf := cache.NewSharedInformer(rqlw, &quotav1meta.ClusterResourceQuota{}, resyncPeriod)
-
-	clusterResourceQuotaLister := ClusterResourceQuotaLister(func() (clusterresourcequotas []quotav1meta.ClusterResourceQuota, err error) {
-		for _, rq := range rqinf.GetStore().List() {
-			clusterresourcequotas = append(clusterresourcequotas, *(rq.(*quotav1meta.ClusterResourceQuota)))
-		}
-		return clusterresourcequotas, nil
-	})
-
-
-	m := make(map[string]int)
-	registry.MustRegister(&clusterResourceQuotaCollector{store: clusterResourceQuotaLister, m: m, namespace: namespace})
-	go rqinf.Run(context.Background().Done())
+    } else {	
+	
+		/* Note: OAPI only provides very specifiy clientsets */
+		clusterresourcequotaClient, err := clusterresourcequotav1meta.NewForConfig(kubeConfig)
+		if err != nil {
+		    glog.Fatalf("Failed to access clusterresourcequotas api: %v", err)
+		}		
+		resyncPeriod, _ := time.ParseDuration("0h0m30s")		
+		client := clusterresourcequotaClient.QuotaV1().RESTClient()		
+		// note: namespace not supported here, filter at collection
+		rqlw := cache.NewListWatchFromClient(client, "clusterresourcequotas", "", fields.Everything())
+		rqinf := cache.NewSharedInformer(rqlw, &quotav1meta.ClusterResourceQuota{}, resyncPeriod)		
+		clusterResourceQuotaLister := ClusterResourceQuotaLister(func() (clusterresourcequotas []quotav1meta.ClusterResourceQuota, err error) {
+			for _, rq := range rqinf.GetStore().List() {
+				clusterresourcequotas = append(clusterresourcequotas, *(rq.(*quotav1meta.ClusterResourceQuota)))
+			}
+			return clusterresourcequotas, nil
+		})		
+		m := make(map[string]int)
+		registry.MustRegister(&clusterResourceQuotaCollector{store: clusterResourceQuotaLister, m: m, namespace: namespace})
+		go rqinf.Run(context.Background().Done())
+    }
 }
 
 type clusterResourceQuotaStore interface {
