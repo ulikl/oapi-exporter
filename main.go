@@ -65,10 +65,12 @@ var (
 
 	defaultCollectorsOApi = collectorSet{
 		"appliedclusterresourcequotas":         struct{}{},
+		"clusterresourcequotas":         struct{}{},
 		"deploymentconfigs":         struct{}{},
 	}
 	availableCollectorsOApi = map[string]func(registry prometheus.Registerer, kubeConfig *rest.Config, namespace string){
 		"appliedclusterresourcequotas":         RegisterAppliedClusterResourceQuotaCollectorOApi,
+		"clusterresourcequotas":         RegisterClusterResourceQuotaCollectorOApi,
 		"deploymentconfigs": RegisterDeploymentConfigCollectorOApi,
 	}
 

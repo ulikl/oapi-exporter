@@ -39,12 +39,12 @@ type Version struct {
 }
 
 func (v Version) String() string {
-	return fmt.Sprintf("%s/%s (%s/%s) kube-state-metrics/%s",
+	return fmt.Sprintf("%s/%s (%s/%s) oapi-exporter/%s",
 		filepath.Base(os.Args[0]), v.Release,
 		runtime.GOOS, runtime.GOARCH, v.GitCommit)
 }
 
-// GetVersion returns kube-state-metrics version
+// GetVersion returns oapi-exporter version
 func GetVersion() Version {
 	return Version{
 		GitCommit: Commit,
