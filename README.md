@@ -81,7 +81,7 @@ oapi-exporter exposes its own general process metrics under `--telemetry-host` a
 
 ### Resource recommendation
 
-Resource usage for oapi-exporter changes with the OPenShift objects(DeploymentConfig/ResourcequotasSecrets etc.) size of the cluster.
+Resource usage for oapi-exporter changes with the number of the OpenShift objects (DeploymentConfig/ClusterResourceQuotas/Secrets etc.) in the cluster.
 To some extent, the OpenShift objects in a cluster are in direct proportion to the node number of the cluster.
 
 As a general rule, you should allocate
@@ -94,6 +94,17 @@ Note that if CPU limits are set too low, oapi-exporter' internal queues will not
 ### A note on costing
 
 By default, oapi-exporter exposes several metrics for events across your cluster. If you have a large number of frequently-updating resources on your cluster, you may find that a lot of data is ingested into these metrics. This can incur high costs on some cloud providers. Please take a moment to [configure what metrics you'd like to expose](docs/cli-arguments.md), as well as consult the documentation for your OpenShift environment in order to avoid unexpectedly high costs.  
+
+Also take the following section into accoutn.
+
+### ClusterResourceQuotas vs AppliedClusterResourceQuotas
+
+Both provide nearly the same metrics on the ClusterResourceQuotas and the usage of the namespaces:
+- AppliedClusterResourceQuotas can be accessed with roles per namespace (e.g. namespace admin), but they provide no watch interface. Hence using them for all namespaces requires looping over all namespaces, which leads to many OAPI calls and can easily take more than 10 seconds in total. So the collection is only recommened for use with few namespaces. Here only the ClusterResourceQuotas which apply to the selected namespaces are shown.
+- ClusterResourceQuotas require the Role Cluster-Reader or a special Cluster-wide RBAC.
+If its selector currently doesn't apply to any namespace, metrics with the hard quotas are provived. If it is used per namespace all ClusterResourceQuotas are still gathered via watch, but only the  which apply to the selected namespaces are shown.
+So this collector uses more memory than expected.
+
 
 ### Compilation
 

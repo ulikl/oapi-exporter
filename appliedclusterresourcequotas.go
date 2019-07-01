@@ -205,25 +205,22 @@ func RegisterAppliedClusterResourceQuotaCollector(registry prometheus.Registerer
 func RegisterAppliedClusterResourceQuotaCollectorOApi(registry prometheus.Registerer, kubeConfig *rest.Config, namespace string) {
 	 /* NOTE: appliedclusterresourcequata does not support watch and select by all namespaces*/
 
- /* for retrieving the current namespace list */
+  /* for retrieving the current namespace list */
 	kubeClient, err := kubeclientset.NewForConfig(kubeConfig)
 	if err != nil {
-		glog.Fatalf("Failed to access quotas api: %v", err)
+		glog.Fatalf("Failed to access kube api: %v", err)
 	}
   /* Note: OAPI only provides very specifiy clientsets */
 	quotaClient, err := quotav1clientset.NewForConfig(kubeConfig)
 	if err != nil {
-		glog.Fatalf("Failed to access quotas api: %v", err)
+		glog.Fatalf("Failed to access quotas oapi: %v", err)
 	}
 
-	glog.Infof("collect appliedclusterresourcequota on demand")
-
-	/*
-	_, err = quotaClient.QuotaV1().AppliedClusterResourceQuotas("dummyns").List(v1meta.ListOptions{})
-	if err != nil {
-		glog.Fatalf("Failed to access quotas api: %v", err)
+	glog.Infof("collect appliedclusterresourcequotas on demand")
+	
+	if (namespace == v1meta.NamespaceAll) {
+		glog.Infof("using appliedclusterresourcequotas for all namespace may be an performance issue. It is recommended to use clusterresourcequotas instead.")
 	}
-	*/
 	
   m := make(map[string]int)
 	registry.MustRegister(&resourceQuotaCollector{quotaclientset: quotaClient, kubeclientset: kubeClient, namespace: namespace, m: m})
