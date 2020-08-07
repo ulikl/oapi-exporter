@@ -1,5 +1,15 @@
 # Overview
 
+# Deprecation notice
+
+This project is no longer maintained.
+Its functionality and more is provided by
+https://github.com/openshift/openshift-state-metrics
+
+For migration note, that the metrics name and labels are slightly different.
+
+# Description
+
 oapi-exporter is a simple service that listens to the OpenShift API
 server and generates metrics about the state of the OpenShift objects. (See examples in
 the Metrics section below.) 
@@ -29,7 +39,7 @@ the raw metrics.
   - [Resource group version compatibility](#resource-group-version-compatibility)
   - [Container Image](#container-image)
 - [Metrics Documentation](#metrics-documentation)
-- [Kube-state-metrics self metrics](#oapi-exporter-self-metrics)
+- [Self metrics](#oapi-exporter-self-metrics)
 - [Resource recommendation](#resource-recommendation)
 - [A note on costing](#a-note-on-costing)
 - [oapi-exporter vs. metrics-server](#oapi-exporter-vs-metrics-server)
